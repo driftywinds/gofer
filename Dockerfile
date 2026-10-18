@@ -20,6 +20,10 @@ RUN git clone "${GOFER_REPO}" . \
 # templ, pinned to the version in go.mod
 RUN go install github.com/a-h/templ/cmd/templ@$(go list -m -f '{{.Version}}' github.com/a-h/templ)
 
+# Task runner: upstream's `task generate` is the source of truth for the asset pipeline
+# (templ -> tailwind -> esbuild JS minify), so we run it instead of copying its steps.
+RUN go install github.com/go-task/task/v3/cmd/task@latest
+
 # Tailwind standalone binary
 RUN case "${TARGETARCH:-amd64}" in \
       amd64) TW=tailwindcss-linux-x64 ;; \
@@ -29,9 +33,8 @@ RUN case "${TARGETARCH:-amd64}" in \
  && curl -fsSL -o /usr/local/bin/tailwindcss "${TAILWIND_BASE}/${TW}" \
  && chmod +x /usr/local/bin/tailwindcss
 
-# Same steps as `task release`: generate views + CSS, then build with embedded assets
-RUN templ generate --ignore-pattern='(^|/)(tmp|dist)(/|$)' \
- && tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --minify
+# Same as `task release`: generate views + CSS + minified JS, then build with embedded assets
+RUN task generate
 RUN CGO_ENABLED=0 go build -tags embedded_assets -trimpath -ldflags="-s -w" -o /out/gofer .
 
 # ---------- runtime stage ----------
